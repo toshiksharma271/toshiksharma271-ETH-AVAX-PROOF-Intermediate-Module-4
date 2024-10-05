@@ -1,53 +1,119 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.13;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 
-contract DegenToken is ERC20, Ownable {
-    mapping(uint256 => uint256) public itemPrices; // Mapping of item IDs to their prices
+contract DegenToken is ERC20, Ownable, ERC20Burnable {
 
-    constructor() ERC20("DegenToken", "DGN") {
-        // Mint an initial supply of tokens to the contract deployer (owner)
-        _mint(msg.sender, 1000000 * 10 ** uint(decimals())); // Adjust the initial supply as needed
+    struct Item {
+        string name;
+        uint8 itemId;
+        uint256 price;
+    }
+    mapping (uint8=>Item) items;
+    mapping (address=>Item[]) playerItems;
+    uint8 public tokenId;
+    
+    event ItemPurchased(address indexed buyer, uint8 itemId, string itemName, uint256 price);
+    event GameOutcome(address indexed player, uint256 num, bool won, string result);
+
+    constructor (address initialOwner, uint tokenSupply) ERC20("Degen", "DGN") Ownable(initialOwner) {
+        mint(initialOwner, tokenSupply);
+        
+        items[1] = Item("Beginner's Beacon", 1, 100);
+        items[2] = Item("Epic Explorer", 2, 700);
+        items[3] = Item("Galactic Guardian", 3, 1200);
+        items[4] = Item("Stellar Sentinel", 4, 2200);
+        items[5] = Item("Ultimate Overlord", 5, 2400);
+        tokenId = 6;
+
     }
 
-    // Mint new tokens, only callable by the owner
+    function decimals() override public pure returns (uint8){
+        return 0;
+    }
+
+    // Minting tokens
+
     function mint(address to, uint256 amount) public onlyOwner {
         _mint(to, amount);
     }
 
-    // Transfer tokens to another address
-    function transferTokens(address to, uint256 amount) public {
-        require(to != address(0), "Invalid address");
-        require(balanceOf(msg.sender) >= amount, "Insufficient balance");
-        _transfer(msg.sender, to, amount);
+    // Transferring tokens
+
+    function transferToken(address _recipient, uint _amount) external {
+        require(balanceOf(msg.sender)>=_amount, "Insufficient balance");
+        transfer(_recipient, _amount);
     }
 
-    // Redeem tokens for items in the in-game store
-    function redeemTokens(uint256 itemId) public {
-        require(itemPrices[itemId] > 0, "Invalid item ID"); // Check if the item exists
-        uint256 price = itemPrices[itemId];
-        require(balanceOf(msg.sender) >= price, "Insufficient balance");
 
-        // Implement logic to deliver the item to the player here.
-        // For this example, we'll simply deduct the tokens from the player's balance.
-        _burn(msg.sender, price);
+    // Burning tokens
+
+    function burnToken(uint _amount) external {
+        require(balanceOf(msg.sender)>=_amount, "Insufficient amount");
+        burn(_amount);
     }
 
-    // Add an item with a specific price to the in-game store
-    function addItemToStore(uint256 itemId, uint256 price) public onlyOwner {
-        itemPrices[itemId] = price;
+    // Redeeming tokens
+
+    function wel_Bonus() public {
+        require(balanceOf(msg.sender) == 0, "You've already claimed your welcome bonus");
+        _mint(msg.sender, 50);
     }
 
-    // Check token balance of an address
-    function getTokenBalance(address account) public view returns (uint256) {
-        return balanceOf(account);
+    function add_Item(string memory _name, uint256 _price) public onlyOwner {
+        items[tokenId] = Item(_name, tokenId,_price);
+        tokenId++;
+    } 
+
+    function Less_Than_Five(bool _prediction, uint256 _betAmount) public {
+        uint randomNumber = uint(keccak256(abi.encodePacked(block.timestamp, msg.sender))) % 10;
+
+        if (_prediction ==(randomNumber<5)) {
+            _mint(msg.sender, _betAmount*2);
+            emit GameOutcome(msg.sender, randomNumber, true, "won");
+
+        } else {
+            burn(_betAmount);
+            emit GameOutcome(msg.sender, randomNumber, false, "lost");
+        }
+    }
+    
+    function pur_Item(uint8 _itemId) external {
+        require(items[_itemId].price != 0, "Item not found");
+        require(balanceOf(msg.sender) >= items[_itemId].price, "Insufficient balance");
+
+        burn(items[_itemId].price);
+        playerItems[msg.sender].push(items[_itemId]);
+
+        emit ItemPurchased(msg.sender, _itemId, items[_itemId].name, items[_itemId].price);
     }
 
-    // Burn tokens that are no longer needed
-    function burnTokens(uint256 amount) public {
-        require(balanceOf(msg.sender) >= amount, "Insufficient balance");
-        _burn(msg.sender, amount);
+    function get_User_Items(address user) external view returns (uint8[] memory) {
+        Item[] memory itemsList = playerItems[user];
+        uint length = itemsList.length;
+
+        uint8[] memory _ids = new uint8[](length);
+
+        for (uint i = 0; i < length; i++) {
+            _ids[i] = itemsList[i].itemId;
+        }
+
+        return _ids;
     }
+    function getItemName(uint8 _id) external  view returns (string memory) {
+        return items[_id].name;
+    }
+    function getItemPrice(uint8 _id) external  view returns(uint){
+        return items[_id].price;
+    }
+
+ // Checking token balance
+
+    function getBalance() external view returns(uint256){
+        return balanceOf(msg.sender);
+    }
+
 }
